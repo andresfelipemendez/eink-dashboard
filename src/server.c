@@ -5,12 +5,17 @@
 
 static const char *get_time(void);
 
-/* Static HTML page - no JavaScript for e-ink browser compatibility */
+/* HTML page with WebSocket clock */
 static const char *HTML_PAGE =
     "<!DOCTYPE html><html><head><title>eink-dashboard</title></head>"
     "<body>"
     "<h1>eink-dashboard</h1>"
-    "<p>Static page - no JavaScript</p>"
+    "<p id=\"time\">Connecting...</p>"
+    "<script>"
+    "var ws = new WebSocket('ws://' + location.host + '/ws');"
+    "ws.onmessage = function(e) { document.getElementById('time').textContent = e.data; };"
+    "ws.onclose = function() { document.getElementById('time').textContent = 'Disconnected'; };"
+    "</script>"
     "</body></html>";
 
 /* HTTP request handler */

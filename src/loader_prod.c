@@ -11,6 +11,7 @@
 
 #define APP_LIB "./app.so"
 #define PORT 8080
+#define MAX_TIME_CLIENTS 64
 
 static volatile int g_running = 1;
 
@@ -20,6 +21,13 @@ static AppAPI *g_api = NULL;
 
 /* Server state */
 static struct lws_context *g_ctx = NULL;
+
+/* Time WebSocket clients */
+static struct lws *g_time_clients[MAX_TIME_CLIENTS];
+static int g_time_client_count = 0;
+
+/* Timer for pushing time */
+static struct lws_sorted_usec_list g_time_sul;
 
 static void signal_handler(int sig) {
     (void)sig;
@@ -81,8 +89,54 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason,
     return 0;
 }
 
+/* Timer callback - push time to all clients */
+static void time_timer_cb(struct lws_sorted_usec_list *sul) {
+    (void)sul;
+    if (!g_api || !g_api->get_time) return;
+
+    const char *time_str = g_api->get_time();
+    size_t len = strlen(time_str);
+
+    for (int i = 0; i < g_time_client_count; i++) {
+        unsigned char buf[LWS_PRE + 64];
+        memcpy(buf + LWS_PRE, time_str, len);
+        lws_write(g_time_clients[i], buf + LWS_PRE, len, LWS_WRITE_TEXT);
+    }
+
+    /* Reschedule for next second */
+    lws_sul_schedule(g_ctx, 0, &g_time_sul, time_timer_cb, LWS_US_PER_SEC);
+}
+
+/* WebSocket callback for time */
+static int callback_time_ws(struct lws *wsi, enum lws_callback_reasons reason,
+                            void *user, void *in, size_t len) {
+    (void)user; (void)in; (void)len;
+
+    switch (reason) {
+    case LWS_CALLBACK_ESTABLISHED:
+        if (g_time_client_count < MAX_TIME_CLIENTS) {
+            g_time_clients[g_time_client_count++] = wsi;
+            printf("[loader] time client connected (%d)\n", g_time_client_count);
+        }
+        break;
+    case LWS_CALLBACK_CLOSED:
+        for (int i = 0; i < g_time_client_count; i++) {
+            if (g_time_clients[i] == wsi) {
+                g_time_clients[i] = g_time_clients[--g_time_client_count];
+                printf("[loader] time client disconnected (%d)\n", g_time_client_count);
+                break;
+            }
+        }
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
 static struct lws_protocols protocols[] = {
     {"http-only", callback_http, 0, 0, 0, NULL, 0},
+    {"time-protocol", callback_time_ws, 0, 64, 0, NULL, 0},
     {NULL, NULL, 0, 0, 0, NULL, 0}
 };
 
@@ -103,12 +157,30 @@ static AppAPI *get_api(void *handle) {
     return fn();
 }
 
+/* Mount for WebSocket upgrade on /ws */
+static const struct lws_http_mount mount_ws = {
+    .mount_next = NULL,
+    .mountpoint = "/ws",
+    .mountpoint_len = 3,
+    .origin_protocol = LWSMPRO_CALLBACK,
+    .protocol = "time-protocol",
+};
+
+static const struct lws_http_mount mount_http = {
+    .mount_next = &mount_ws,
+    .mountpoint = "/",
+    .mountpoint_len = 1,
+    .origin_protocol = LWSMPRO_CALLBACK,
+    .protocol = "http-only",
+};
+
 static int server_init(void) {
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
 
     info.port = PORT;
     info.protocols = protocols;
+    info.mounts = &mount_http;
     info.options = 0;
 
     g_ctx = lws_create_context(&info);
@@ -116,6 +188,9 @@ static int server_init(void) {
         fprintf(stderr, "[loader] failed to create server context\n");
         return -1;
     }
+
+    /* Start time push timer */
+    lws_sul_schedule(g_ctx, 0, &g_time_sul, time_timer_cb, LWS_US_PER_SEC);
 
     printf("[loader] server listening on port %d\n", PORT);
     fflush(stdout);
