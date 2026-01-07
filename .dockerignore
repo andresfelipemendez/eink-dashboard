@@ -1,0 +1,6 @@
+*.so
+loader
+dashboard
+.git
+.gitignore
+README.md

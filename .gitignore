@@ -1,0 +1,13 @@
+# Build artifacts
+loader
+app.so
+dashboard
+
+# Editor
+.vscode/
+*.swp
+*~
+
+# Debug
+core
+*.core
