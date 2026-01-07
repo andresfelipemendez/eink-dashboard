@@ -157,30 +157,12 @@ static AppAPI *get_api(void *handle) {
     return fn();
 }
 
-/* Mount for WebSocket upgrade on /ws */
-static const struct lws_http_mount mount_ws = {
-    .mount_next = NULL,
-    .mountpoint = "/ws",
-    .mountpoint_len = 3,
-    .origin_protocol = LWSMPRO_CALLBACK,
-    .protocol = "time-protocol",
-};
-
-static const struct lws_http_mount mount_http = {
-    .mount_next = &mount_ws,
-    .mountpoint = "/",
-    .mountpoint_len = 1,
-    .origin_protocol = LWSMPRO_CALLBACK,
-    .protocol = "http-only",
-};
-
 static int server_init(void) {
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
 
     info.port = PORT;
     info.protocols = protocols;
-    info.mounts = &mount_http;
     info.options = 0;
 
     g_ctx = lws_create_context(&info);
