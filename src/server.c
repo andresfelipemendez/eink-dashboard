@@ -13,9 +13,9 @@ static const char *HTML_PAGE =
     "<p id=\"time\">Connecting...</p>"
     "<script>"
 #ifdef PRODUCTION
-    "var ws = new WebSocket('wss://' + location.host + '/ws');"
+    "var ws = new WebSocket('wss://' + location.host + '/ws', 'time-protocol');"
 #else
-    "var ws = new WebSocket('ws://' + location.host + '/ws');"
+    "var ws = new WebSocket('ws://' + location.host + '/ws', 'time-protocol');"
 #endif
     "ws.onmessage = function(e) { document.getElementById('time').textContent = e.data; };"
     "ws.onclose = function() { document.getElementById('time').textContent = 'Disconnected'; };"
