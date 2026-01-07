@@ -11,7 +11,6 @@
 
 #define APP_LIB "./app.so"
 #define PORT 8080
-#define MAX_TIME_CLIENTS 64
 
 static volatile int g_running = 1;
 
@@ -22,40 +21,9 @@ static AppAPI *g_api = NULL;
 /* Server state */
 static struct lws_context *g_ctx = NULL;
 
-/* Time WebSocket clients */
-static struct lws *g_time_clients[MAX_TIME_CLIENTS];
-static int g_time_client_count = 0;
-
-/* Timer for pushing time */
-static struct lws_sorted_usec_list g_time_sul;
-
 static void signal_handler(int sig) {
     (void)sig;
     g_running = 0;
-}
-
-/* Push time to all connected clients */
-static void push_time_to_clients(void) {
-    if (!g_api || !g_api->get_time || g_time_client_count == 0) return;
-
-    const char *time_str = g_api->get_time();
-    if (!time_str) return;
-
-    size_t len = strlen(time_str);
-    unsigned char buf[LWS_PRE + 128];
-    memcpy(&buf[LWS_PRE], time_str, len);
-
-    for (int i = 0; i < g_time_client_count; i++) {
-        if (g_time_clients[i]) {
-            lws_write(g_time_clients[i], &buf[LWS_PRE], len, LWS_WRITE_TEXT);
-        }
-    }
-}
-
-/* Timer callback - runs every second */
-static void time_timer_cb(struct lws_sorted_usec_list *sul) {
-    push_time_to_clients();
-    lws_sul_schedule(g_ctx, 0, sul, time_timer_cb, LWS_US_PER_SEC);
 }
 
 /* HTTP callback - dispatches to app.so handler */
@@ -72,11 +40,22 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason,
         };
 
         const char *body = NULL;
-        if (g_api && g_api->handle_http) {
-            body = g_api->handle_http(&req);
+        const char *content_type = "text/html";
+
+        /* Check if /time endpoint */
+        if (len >= 5 && strncmp((const char *)in, "/time", 5) == 0) {
+            if (g_api && g_api->get_time) {
+                body = g_api->get_time();
+            }
+            content_type = "text/plain";
+        } else {
+            if (g_api && g_api->handle_http) {
+                body = g_api->handle_http(&req);
+            }
         }
+
         if (!body) {
-            body = "<html><body><h1>No handler</h1></body></html>";
+            body = "error";
         }
 
         size_t body_len = strlen(body);
@@ -84,7 +63,7 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason,
         unsigned char *p = buf + LWS_PRE;
         unsigned char *end = buf + sizeof(buf);
 
-        if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, "text/html",
+        if (lws_add_http_common_headers(wsi, HTTP_STATUS_OK, content_type,
                                         body_len, &p, end))
             return 1;
         if (lws_finalize_write_http_header(wsi, buf + LWS_PRE, &p, end))
@@ -102,44 +81,8 @@ static int callback_http(struct lws *wsi, enum lws_callback_reasons reason,
     return 0;
 }
 
-/* Time WebSocket - pushes server time every second */
-static int callback_time(struct lws *wsi, enum lws_callback_reasons reason,
-                         void *user, void *in, size_t len) {
-    (void)user; (void)in; (void)len;
-
-    switch (reason) {
-    case LWS_CALLBACK_ESTABLISHED:
-        if (g_time_client_count < MAX_TIME_CLIENTS) {
-            g_time_clients[g_time_client_count++] = wsi;
-        }
-        break;
-
-    case LWS_CALLBACK_CLOSED:
-        for (int i = 0; i < g_time_client_count; i++) {
-            if (g_time_clients[i] == wsi) {
-                g_time_clients[i] = g_time_clients[--g_time_client_count];
-                break;
-            }
-        }
-        break;
-
-    default:
-        break;
-    }
-    return 0;
-}
-
-/* Livereload - no-op in production, just keeps connection open */
-static int callback_livereload(struct lws *wsi, enum lws_callback_reasons reason,
-                               void *user, void *in, size_t len) {
-    (void)wsi; (void)user; (void)in; (void)len; (void)reason;
-    return 0;
-}
-
 static struct lws_protocols protocols[] = {
     {"http-only", callback_http, 0, 0, 0, NULL, 0},
-    {"livereload", callback_livereload, 0, 0, 0, NULL, 0},
-    {"time", callback_time, 0, 128, 0, NULL, 0},
     {NULL, NULL, 0, 0, 0, NULL, 0}
 };
 
@@ -174,8 +117,6 @@ static int server_init(void) {
         return -1;
     }
 
-    lws_sul_schedule(g_ctx, 0, &g_time_sul, time_timer_cb, LWS_US_PER_SEC);
-
     printf("[loader] server listening on port %d\n", PORT);
     fflush(stdout);
     return 0;
@@ -204,7 +145,6 @@ int main(int argc, char **argv) {
         lws_service(g_ctx, 1000);
     }
 
-    lws_sul_cancel(&g_time_sul);
     if (g_ctx) {
         lws_context_destroy(g_ctx);
     }

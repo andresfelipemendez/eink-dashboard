@@ -1,26 +1,32 @@
 #include "app.h"
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
-/* HTML page with livereload and time display */
+static const char *get_time(void);
+
+/* HTML page - no WebSockets (e-ink browser compatibility) */
 static const char *HTML_PAGE =
     "<!DOCTYPE html><html><head><title>eink-dashboard</title></head>"
-    "<body><h1>eink-dashboard reload</h1>"
+    "<body>"
+    "<h1>eink-dashboard</h1>"
     "<div id='time' style='font-size:2em;font-family:monospace;'></div>"
     "<script>"
-    "(function(){"
-    "  var p = location.protocol === 'https:' ? 'wss://' : 'ws://';"
-    "  var lr = new WebSocket(p + location.host, 'livereload');"
-    "  lr.onclose = function() { setTimeout(function() { location.reload(); }, 500); };"
-    "  var ts = new WebSocket(p + location.host, 'time');"
-    "  ts.onmessage = function(e) { document.getElementById('time').textContent = e.data; };"
-    "})();"
+    "function updateTime(){"
+    "  fetch('/time').then(r=>r.text()).then(t=>{"
+    "    document.getElementById('time').textContent=t;"
+    "  });"
+    "}"
+    "updateTime();"
+    "setInterval(updateTime,1000);"
     "</script>"
     "</body></html>";
 
-/* HTTP request handler - just returns the page */
+/* HTTP request handler */
 static const char *handle_http(HttpRequest *req) {
-    (void)req;
+    if (req->path_len >= 5 && strncmp(req->path, "/time", 5) == 0) {
+        return get_time();
+    }
     return HTML_PAGE;
 }
 
