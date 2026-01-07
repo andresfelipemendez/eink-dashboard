@@ -12,8 +12,11 @@ static const char *HTML_PAGE =
     "<h1>eink-dashboard</h1>"
     "<p id=\"time\">Connecting...</p>"
     "<script>"
-    "var p = location.protocol === 'https:' ? 'wss://' : 'ws://';"
-    "var ws = new WebSocket(p + location.host + '/ws');"
+#ifdef PRODUCTION
+    "var ws = new WebSocket('wss://' + location.host + '/ws');"
+#else
+    "var ws = new WebSocket('ws://' + location.host + '/ws');"
+#endif
     "ws.onmessage = function(e) { document.getElementById('time').textContent = e.data; };"
     "ws.onclose = function() { document.getElementById('time').textContent = 'Disconnected'; };"
     "</script>"

@@ -7,7 +7,7 @@ COPY src/ src/
 
 # Production build - no hot-reload, no file watcher
 RUN gcc -O2 -o loader src/loader_prod.c -ldl -lwebsockets && \
-    gcc -O2 -shared -fPIC -o app.so src/app.c
+    gcc -O2 -DPRODUCTION -shared -fPIC -o app.so src/app.c
 
 FROM alpine:3.20
 
