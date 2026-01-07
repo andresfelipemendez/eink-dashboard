@@ -5,21 +5,12 @@
 
 static const char *get_time(void);
 
-/* HTML page - no WebSockets (e-ink browser compatibility) */
+/* Static HTML page - no JavaScript for e-ink browser compatibility */
 static const char *HTML_PAGE =
     "<!DOCTYPE html><html><head><title>eink-dashboard</title></head>"
     "<body>"
     "<h1>eink-dashboard</h1>"
-    "<div id='time' style='font-size:2em;font-family:monospace;'></div>"
-    "<script>"
-    "function updateTime(){"
-    "  fetch('/time').then(r=>r.text()).then(t=>{"
-    "    document.getElementById('time').textContent=t;"
-    "  });"
-    "}"
-    "updateTime();"
-    "setInterval(updateTime,1000);"
-    "</script>"
+    "<p>Static page - no JavaScript</p>"
     "</body></html>";
 
 /* HTTP request handler */
