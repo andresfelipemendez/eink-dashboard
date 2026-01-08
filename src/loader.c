@@ -191,7 +191,7 @@ static int callback_time(struct lws *wsi, enum lws_callback_reasons reason,
 static struct lws_protocols protocols[] = {
     {"http-only", callback_http, 0, 0, 0, NULL, 0},
     {"livereload", callback_livereload, 0, 0, 0, NULL, 0},
-    {"time", callback_time, 0, 128, 0, NULL, 0},
+    {"time-protocol", callback_time, 0, 128, 0, NULL, 0},
     {NULL, NULL, 0, 0, 0, NULL, 0}
 };
 
