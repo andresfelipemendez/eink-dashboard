@@ -5,9 +5,9 @@
 #include <signal.h>
 #include <dlfcn.h>
 #include <unistd.h>
-#include <sys/inotify.h>
+#include <sys/stat.h>
+#include <dirent.h>
 #include <pthread.h>
-#include <errno.h>
 #include <libwebsockets.h>
 
 #include "app.h"
@@ -219,32 +219,52 @@ static AppAPI *get_api(void *handle) {
     return fn();
 }
 
-/* File watcher thread */
+/* Get latest mtime of .c and .h files in directory */
+static time_t get_latest_mtime(const char *dir) {
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+
+    time_t latest = 0;
+    struct dirent *entry;
+    char path[512];
+
+    while ((entry = readdir(d)) != NULL) {
+        const char *name = entry->d_name;
+        size_t len = strlen(name);
+        if (len < 2) continue;
+
+        /* Check for .c or .h extension */
+        if ((len > 2 && strcmp(name + len - 2, ".c") == 0) ||
+            (len > 2 && strcmp(name + len - 2, ".h") == 0)) {
+            snprintf(path, sizeof(path), "%s/%s", dir, name);
+            struct stat st;
+            if (stat(path, &st) == 0 && st.st_mtime > latest) {
+                latest = st.st_mtime;
+            }
+        }
+    }
+    closedir(d);
+    return latest;
+}
+
+/* File watcher thread - polling based for Windows host compatibility */
 static void *watcher_thread(void *arg) {
     (void)arg;
 
-    int inotify_fd = inotify_init1(0);
-    if (inotify_fd < 0) {
-        perror("inotify_init1");
-        return NULL;
-    }
-
-    int wd = inotify_add_watch(inotify_fd, WATCH_DIR, IN_CLOSE_WRITE);
-    if (wd < 0) {
-        perror("inotify_add_watch");
-        close(inotify_fd);
-        return NULL;
-    }
-
-    printf("[watcher] monitoring %s\n", WATCH_DIR);
+    printf("[watcher] polling %s (500ms interval)\n", WATCH_DIR);
     fflush(stdout);
 
+    time_t last_mtime = get_latest_mtime(WATCH_DIR);
+
     while (g_running) {
-        char buf[4096];
-        ssize_t len = read(inotify_fd, buf, sizeof(buf));
-        if (len > 0 && g_running) {
+        usleep(500000); /* 500ms */
+
+        time_t current_mtime = get_latest_mtime(WATCH_DIR);
+        if (current_mtime > last_mtime) {
             printf("[watcher] file changed\n");
             fflush(stdout);
+            last_mtime = current_mtime;
+
             pthread_mutex_lock(&g_mutex);
             g_reload_requested = 1;
             if (g_ctx) {
@@ -254,7 +274,6 @@ static void *watcher_thread(void *arg) {
         }
     }
 
-    close(inotify_fd);
     return NULL;
 }
 

@@ -9,7 +9,7 @@ static const char *get_time(void);
 static const char *HTML_PAGE =
     "<!DOCTYPE html><html><head><title>eink-dashboard</title></head>"
     "<body>"
-    "<h1>eink-dashboard</h1>"
+    "<h1>eink-dashboard reload</h1>"
     "<p id=\"time\">Connecting...</p>"
     "<script>"
     "function connect() {"
@@ -23,6 +23,10 @@ static const char *HTML_PAGE =
     "  ws.onerror = function() { ws.close(); };"
     "}"
     "connect();"
+#ifndef PRODUCTION
+    "var lr = new WebSocket('ws://' + location.host, 'livereload');"
+    "lr.onclose = function() { location.reload(); };"
+#endif
     "</script>"
     "</body></html>";
 
